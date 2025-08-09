@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>University Budget Dashboard</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f9fafb;
+      margin: 0;
+      padding: 20px;
+      color: #333;
+      max-width: 900px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 5px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      box-shadow: 0 1px 3px rgb(0 0 0 / 0.1);
+      margin-bottom: 20px;
+    }
+    th, td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #ddd;
+      text-align: left;
+      vertical-align: middle;
+    }
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 6px;
+      box-sizing: border-box;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 1rem;
+    }
+    button {
+      background-color: #3182ce;
+      border: none;
+      color: white;
+      padding: 8px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1rem;
+      margin-right: 10px;
+    }
+    button:hover {
+      background-color: #2c5282;
+    }
+    .flex {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    #summary {
+      background: white;
+      padding: 12px;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgb(0 0 0 / 0.1);
+      margin-bottom: 20px;
+    }
+    #summary ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    #summary li {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+    canvas {
+      background: white;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgb(0 0 0 / 0.1);
+      max-width: 100%;
+      height: 300px !important;
+      margin-bottom: 20px;
+    }
+    .remove-btn {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      font-size: 1.3rem;
+      color: #c53030;
+      padding: 0 6px;
+      line-height: 1;
+    }
+    .remove-btn:hover {
+      color: #9b2c2c;
+    }
+    th.remove-header,
+    td.remove-cell {
+      width: 40px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>University Budget — Per Student Dashboard</h1>
+  <p>Edit university names, budgets (Tk), and student counts. Per-student budget updates automatically.</p>
+
+  <table id="budgetTable" aria-label="University Budget Table">
+    <thead>
+      <tr>
+        <th>University</th>
+        <th>Budget (Tk)</th>
+        <th>Students</th>
+        <th>Per Student (Tk / year)</th>
+        <th class="remove-header" aria-label="Remove University"></th>
+        <th class="Add-header" aria-label="Add University"></th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- Rows inserted by JS -->
+    </tbody>
+  </table>
+
+  <div class="flex">
+    <button id="addUniversityBtn">Add University</button>
+    <button id="resetBtn">Reset</button>
+    <button id="downloadCSVBtn">Download CSV</button>
+  </div>
+
+  <canvas id="barChart"></canvas>
+
+  <div id="summary">
+    <h2>Summary</h2>
+    <ul id="summaryList"></ul>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const defaultData = [
+      { id: "DU", name: "Dhaka University", budget: 10354500000, students: 37018 },
+      { id: "RU", name: "Rajshahi University", budget: 5643400000, students: 35000 },
+      { id: "JNU", name: "Jagannath University", budget: 2978200000, students: 12000 },
+      { id: "JU", name: "Jahangirnagar University", budget: 3233500000, students: 19000 },
+      { id: "KU", name: "Khulna University", budget: 1000120, students: 10000 },
+      { id: "CU", name: "Chittagong University", budget: 10037, students: 25000 },
+    ];
+
+    let data = JSON.parse(JSON.stringify(defaultData));
+    let nextIdNum = data.length + 1;
+
+    const tbody = document.querySelector("#budgetTable tbody");
+    const summaryList = document.getElementById("summaryList");
+    const resetBtn = document.getElementById("resetBtn");
+    const downloadCSVBtn = document.getElementById("downloadCSVBtn");
+    const addUniversityBtn = document.getElementById("addUniversityBtn");
+    let barChart;
+
+    function formatTk(num) {
+      if (!num && num !== 0) return "-";
+      return "Tk " + Number(num).toLocaleString();
+    }
+
+    function perStudentBudget(row) {
+      if (!row.students || row.students == 0) return 0;
+      return Math.round(row.budget / row.students);
+    }
+
+    function renderTable() {
+      tbody.innerHTML = "";
+      data.forEach((row, idx) => {
+        const tr = document.createElement("tr");
+
+        // University name (text input)
+        const tdName = document.createElement("td");
+        const inputName = document.createElement("input");
+        inputName.type = "text";
+        inputName.value = row.name;
+        inputName.addEventListener("input", (e) => {
+          data[idx].name = e.target.value;
+          updateAll();
+        });
+        tdName.appendChild(inputName);
+        tr.appendChild(tdName);
+
+        // Budget (number input)
+        const tdBudget = document.createElement("td");
+        const inputBudget = document.createElement("input");
+        inputBudget.type = "number";
+        inputBudget.min = 0;
+        inputBudget.value = row.budget;
+        inputBudget.addEventListener("input", (e) => {
+          const val = e.target.value;
+          if (val === "") data[idx].budget = 0;
+          else if (/^\d*$/.test(val)) data[idx].budget = Number(val);
+          else e.target.value = data[idx].budget;
+          updateAll();
+        });
+        tdBudget.appendChild(inputBudget);
+        tr.appendChild(tdBudget);
+
+        // Students (number input)
+        const tdStudents = document.createElement("td");
+        const inputStudents = document.createElement("input");
+        inputStudents.type = "number";
+        inputStudents.min = 0;
+        inputStudents.value = row.students;
+        inputStudents.addEventListener("input", (e) => {
+          const val = e.target.value;
+          if (val === "") data[idx].students = 0;
+          else if (/^\d*$/.test(val)) data[idx].students = Number(val);
+          else e.target.value = data[idx].students;
+          updateAll();
+        });
+        tdStudents.appendChild(inputStudents);
+        tr.appendChild(tdStudents);
+
+        // Per student (readonly)
+        const tdPerStudent = document.createElement("td");
+        tdPerStudent.textContent = formatTk(perStudentBudget(row));
+        tr.appendChild(tdPerStudent);
+
+        // Remove button cell
+        const tdRemove = document.createElement("td");
+        tdRemove.classList.add("remove-cell");
+        const btnRemove = document.createElement("button");
+        btnRemove.classList.add("remove-btn");
+        btnRemove.setAttribute("aria-label", `Remove ${row.name}`);
+        btnRemove.title = "Remove University";
+        btnRemove.innerHTML = "🗑️";
+        btnRemove.addEventListener("click", () => {
+          data.splice(idx, 1);
+          updateAll();
+        
+        
+        });
+        tdRemove.appendChild(btnRemove);
+        tr.appendChild(tdRemove);
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    function updateSummary() {
+      summaryList.innerHTML = "";
+      data.forEach((row) => {
+        const li = document.createElement("li");
+        li.textContent = `${row.name}: ${formatTk(perStudentBudget(row))} / year`;
+        summaryList.appendChild(li);
+      });
+    }
+
+    function updateChart() {
+      const labels = data.map((r) => r.id);
+      const values = data.map((r) => perStudentBudget(r));
+
+      if (barChart) {
+        barChart.data.labels = labels;
+        barChart.data.datasets[0].data = values;
+        barChart.update();
+      } else {
+        const ctx = document.getElementById("barChart").getContext("2d");
+        barChart = new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: "Per Student Budget (Tk)",
+                data: values,
+                backgroundColor: "#3182ce",
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            scales: {
+              y: {
+                beginAtZero: true,
+                ticks: {
+                  callback: (value) => (value ? `Tk ${value / 1000}k` : "0"),
+                },
+              },
+            },
+            plugins: {
+              tooltip: {
+                callbacks: {
+                  label: (context) =>
+                    `Tk ${context.parsed.y.toLocaleString()}`,
+                },
+              },
+              legend: { display: false },
+            },
+          },
+        });
+      }
+    }
+
+    function downloadCSV() {
+      const header = ["University", "Budget_Tk", "Students", "Per_Student_Tk"];
+      const rowsCSV = data.map((r) => [
+        `"${r.name}"`,
+        r.budget,
+        r.students,
+        perStudentBudget(r),
+      ]);
+      const csvContent =
+        header.join(",") +
+        "\n" +
+        rowsCSV.map((r) => r.join(",")).join("\n");
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "university_budget_per_student.csv";
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    function resetData() {
+      data = JSON.parse(JSON.stringify(defaultData));
+      nextIdNum = data.length + 1;
+      updateAll();
+    }
+
+    function addUniversity() {
+      // Add new university with default empty/zero values and unique ID
+      const newId = `UNI${nextIdNum++}`;
+      data.push({ id: newId, name: "New University", budget: 0, students: 0 });
+      updateAll();
+    }
+
+    function updateAll() {
+      renderTable();
+      updateSummary();
+      updateChart();
+    }
+
+    resetBtn.addEventListener("click", resetData);
+    downloadCSVBtn.addEventListener("click", downloadCSV);
+    addUniversityBtn.addEventListener("click", addUniversity);
+
+    updateAll();
+  </script>
+</body>
+</html>
